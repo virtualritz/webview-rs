@@ -12,18 +12,15 @@
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 
-IBrowser::IBrowser(std::shared_ptr<MessageRouter> router,
-                   BrowserSettings* settings,
-                   BrowserObserver observer,
+IBrowser::IBrowser(PageOptions settings,
+                   PageObserver observer,
                    void* ctx)
     : _settings(settings)
     , _observer(observer)
     , _ctx(ctx)
-    , IBridgeMaster(router)
     , IRender(settings, observer, ctx)
     , IDisplay(settings, observer, ctx)
 {
-    assert(settings);
 }
 
 CefRefPtr<CefDragHandler> IBrowser::GetDragHandler()
@@ -93,7 +90,7 @@ CefRefPtr<CefLoadHandler> IBrowser::GetLoadHandler()
 
 CefRefPtr<CefRenderHandler> IBrowser::GetRenderHandler()
 {
-    if (this->_settings->is_offscreen)
+    if (this->_settings.is_offscreen)
     {
         return this;
     }
@@ -111,7 +108,7 @@ void IBrowser::OnLoadStart(CefRefPtr<CefBrowser> browser,
         return;
     }
 
-    _observer.on_state_change(BrowserState::BeforeLoad, _ctx);
+    _observer.on_state_change(PageState::BeforeLoad, _ctx);
 }
 
 void IBrowser::OnLoadEnd(CefRefPtr<CefBrowser> browser,
@@ -125,7 +122,7 @@ void IBrowser::OnLoadEnd(CefRefPtr<CefBrowser> browser,
         return;
     }
 
-    _observer.on_state_change(BrowserState::Load, _ctx);
+    _observer.on_state_change(PageState::Load, _ctx);
 }
 
 void IBrowser::OnLoadError(CefRefPtr<CefBrowser> browser,
@@ -141,7 +138,7 @@ void IBrowser::OnLoadError(CefRefPtr<CefBrowser> browser,
         return;
     }
 
-    _observer.on_state_change(BrowserState::LoadError, _ctx);
+    _observer.on_state_change(PageState::LoadError, _ctx);
 
     if (error_code == ERR_ABORTED)
     {
@@ -159,9 +156,10 @@ void IBrowser::OnAfterCreated(CefRefPtr<CefBrowser> browser)
         return;
     }
 
+    browser->GetHost()->WasResized();
+
     IRender::SetBrowser(browser);
     IControl::SetBrowser(browser);
-    IBridgeMaster::SetBrowser(browser);
     _browser = browser;
 }
 
@@ -178,7 +176,7 @@ bool IBrowser::OnBeforePopup(CefRefPtr<CefBrowser> browser,
                              CefLifeSpanHandler::WindowOpenDisposition target_disposition,
                              bool user_gesture,
                              const CefPopupFeatures& popupFeatures,
-                             CefWindowInfo& windowInfo,
+                             CefWindowInfo& window_info,
                              CefRefPtr<CefClient>& client,
                              CefBrowserSettings& settings,
                              CefRefPtr<CefDictionaryValue>& extra_info,
@@ -199,8 +197,8 @@ void IBrowser::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
     CEF_REQUIRE_UI_THREAD();
 
-    _observer.on_state_change(BrowserState::BeforeClose, _ctx);
-    _observer.on_state_change(BrowserState::Close, _ctx);
+    _observer.on_state_change(PageState::BeforeClose, _ctx);
+    _observer.on_state_change(PageState::Close, _ctx);
     _browser = std::nullopt;
 }
 
@@ -218,7 +216,9 @@ void IBrowser::SetDevToolsOpenState(bool is_open)
 
     if (is_open)
     {
-        _browser.value()->GetHost()->ShowDevTools(CefWindowInfo(), nullptr, CefBrowserSettings(),
+        _browser.value()->GetHost()->ShowDevTools(CefWindowInfo(), 
+                                                  nullptr, 
+                                                  CefBrowserSettings(),
                                                   CefPoint());
     }
     else
@@ -237,8 +237,39 @@ bool IBrowser::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
                                         CefProcessId source_process,
                                         CefRefPtr<CefProcessMessage> message)
 {
-    BridgeMasterOnMessage(message);
+    if (_is_closed)
+    {
+        return false;
+    }
+
+    if (!_browser.has_value())
+    {
+        return false;
+    }
+
+    auto args = message->GetArgumentList();
+    std::string payload = args->GetString(0);
+    _observer.on_message(payload.c_str(), _ctx);
     return true;
+}
+
+void IBrowser::ISendMessage(std::string message)
+{
+    if (_is_closed)
+    {
+        return;
+    }
+
+    if (!_browser.has_value())
+    {
+        return;
+    }
+
+    auto msg = CefProcessMessage::Create("MESSAGE_TRANSPORT");
+    CefRefPtr<CefListValue> args = msg->GetArgumentList();
+    args->SetSize(1);
+    args->SetString(0, message);
+    _browser.value()->GetMainFrame()->SendProcessMessage(PID_RENDERER, msg);
 }
 
 void IBrowser::IClose()
@@ -256,7 +287,6 @@ void IBrowser::IClose()
     IRender::IClose();
     IDisplay::IClose();
     IControl::IClose();
-    IBridgeMaster::IClose();
     _browser.value()->GetHost()->CloseBrowser(true);
 
     _browser = std::nullopt;
