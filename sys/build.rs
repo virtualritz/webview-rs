@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use bzip2::read::BzDecoder;
+use chksum_sha2_512 as sha2_512;
 use reqwest::blocking::Client;
 use std::{
     env,
@@ -26,6 +27,27 @@ where
     copy(&mut response, &mut output_file)?;
 
     Ok(())
+}
+
+fn verify_existing_file<P>(file_path: P, expected_hash: &str) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    // Check if file exists
+    if !file_path.as_ref().exists() {
+        return Err(anyhow!("File does not exist"));
+    }
+
+    // Compute hash of existing file
+    let file = File::open(file_path)?;
+    let digest = sha2_512::chksum(file)?;
+
+    // Compare computed hash with expected hash
+    if digest.to_hex_lowercase() == expected_hash {
+        Ok(())
+    } else {
+        Err(anyhow!("Hash mismatch"))
+    }
 }
 
 fn exec<P>(command: &str, work_dir: P) -> Result<String>
@@ -70,6 +92,7 @@ fn main() -> Result<()> {
 
         #[cfg(target_os = "macos")]
         {
+            // TODO: use same code as linux, only change ar
             exec(
                 "wget https://github.com/mycrl/webview-rs/releases/download/distributions/cef-macos.zip -O ./cef.zip",
                 &out_dir,
@@ -80,11 +103,23 @@ fn main() -> Result<()> {
 
         #[cfg(target_os = "linux")]
         {
-            let archive_url = "https://cef-builds.spotifycdn.com/cef_binary_134.3.8%2Bgfe66d80%2Bchromium-134.0.6998.166_linux64_minimal.tar.bz2";
-            let folder_name = "cef_binary_134.3.8+gfe66d80+chromium-134.0.6998.166_linux64_minimal";
+            //let archive_url = "https://cef-builds.spotifycdn.com/cef_binary_134.3.8%2Bgfe66d80%2Bchromium-134.0.6998.166_linux64_minimal.tar.bz2";
+            //let folder_name =
+            // "cef_binary_134.3.8+gfe66d80+chromium-134.0.6998.166_linux64_minimal";
+            //let archive_sha = "0f0749040be9bbb91b9b91d8736e307827675f0b";
+
+            let archive_url = "https://cef-builds.spotifycdn.com/cef_binary_116.0.27%2Bgd8c85ac%2Bchromium-116.0.5845.190_linux64_minimal.tar.bz2";
+            let folder_name =
+                "cef_binary_116.0.27+gd8c85ac+chromium-116.0.5845.190_linux64_minimal";
+            let archive_sha = "8d2a24715e7b8c2cd7446305deb835fc40bec341";
 
             let archive_path = out_dir.join("cef.tar.bz2");
-            download_file(archive_url, &archive_path)?;
+
+            // Avoid re-downloading the archive if it already exists and has the correct
+            // SHA.
+            if verify_existing_file(&archive_path, archive_sha).is_err() {
+                download_file(archive_url, &archive_path)?;
+            }
 
             let decompressed = BzDecoder::new(File::open(archive_path)?);
             Archive::new(decompressed).unpack(&out_dir)?;
@@ -94,7 +129,8 @@ fn main() -> Result<()> {
     }
 
     #[cfg(not(target_os = "macos"))]
-    if !cef_path.join("libcef_dll_wrapper").exists() {
+    if cef_path.join("libcef_dll_wrapper").exists() {
+        // TODO: use cmake crate instead.
         exec("cmake -DCMAKE_BUILD_TYPE=Release .", &cef_path)?;
         exec("cmake --build . --config Release", &cef_path)?;
     }
@@ -188,9 +224,18 @@ fn main() -> Result<()> {
 
     println!("cargo:rustc-link-lib=static=sys");
     println!("cargo:rustc-link-search=all={}", out_dir.display());
-    println!("cargo:rustc-link-search=all={}/Release", cef_path.display());
+    println!(
+        "cargo:rustc-link-search=all={}",
+        cef_path.join("Release").display()
+    );
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(target_os = "linux"))]
+    println!(
+        "cargo:rustc-link-search=all={}",
+        cef_path.join("libcef_dll_wrapper").display()
+    );
+
+    #[cfg(target_os = "windows")]
     println!(
         "cargo:rustc-link-search=all={}/libcef_dll_wrapper/Release",
         cef_path.display(),

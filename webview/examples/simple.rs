@@ -46,9 +46,7 @@ fn run_cef() -> anyhow::Result<()> {
             WindowOptions::default(),
         )?;
 
-        window.limit_update_rate(Some(Duration::from_millis(
-            1000 / settings.frame_rate as u64,
-        )));
+        window.set_target_fps(settings.frame_rate as _);
 
         let mut frame = vec![0u8; (settings.width * settings.height * 4) as usize];
         loop {

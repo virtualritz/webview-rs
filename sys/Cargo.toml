@@ -7,7 +7,9 @@ edition = "2021"
 anyhow = "1"
 atty = "0.2"
 bindgen = { version = "0.71", default-features = false, features = ["runtime"] }
-cc = { version = "1", features = ["parallel"] }
 bzip2 = "0.5"
+cc = { version = "1", features = ["parallel"] }
+chksum-sha2-512 = "0.1"
+hex = "0.4"
 reqwest = { version = "0.12", features = ["blocking"] }
 tar = "0.4"
