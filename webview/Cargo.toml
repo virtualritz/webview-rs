@@ -7,10 +7,10 @@ edition = "2021"
 name = "simple"
 
 [dependencies]
-raw-window-handle = "0.6.2"
+raw-window-handle = "0.6"
 webview-sys = { path = "../sys" }
-log = "0.4.25"
+log = "0.4"
 
 [dev-dependencies]
 anyhow = "1"
-minifb = "0.24"
+minifb = "0.28"

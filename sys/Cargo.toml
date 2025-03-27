@@ -5,5 +5,9 @@ edition = "2021"
 
 [build-dependencies]
 anyhow = "1"
-cc = { version = "1.0.79", features = ["parallel"] }
-bindgen = { version = "0.70", default-features = false, features = ["runtime"] }
+atty = "0.2"
+bindgen = { version = "0.71", default-features = false, features = ["runtime"] }
+cc = { version = "1", features = ["parallel"] }
+bzip2 = "0.5"
+reqwest = { version = "0.12", features = ["blocking"] }
+tar = "0.4"
