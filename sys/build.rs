@@ -229,7 +229,7 @@ fn main() -> Result<()> {
         cef_path.join("Release").display()
     );
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "linux")]
     println!(
         "cargo:rustc-link-search=all={}",
         cef_path.join("libcef_dll_wrapper").display()
